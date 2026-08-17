@@ -4,8 +4,12 @@ import net from "node:net";
 /**
  * SSRF guard: this app fetches arbitrary user-supplied URLs server-side, so every
  * hostname must be resolved and checked against private/reserved ranges *before*
- * any request is made, and again on every redirect hop (DNS can change between
- * check and fetch, and redirects can point anywhere).
+ * any request is made. Resolving here is not enough on its own though — the
+ * caller must also *connect* to the exact address returned by resolvePublicHost
+ * (see crawler.ts's pinned dispatcher) rather than letting the HTTP client
+ * re-resolve DNS itself, otherwise a DNS-rebinding attacker can return a safe
+ * address for this check and a private one moments later for the real
+ * connection.
  */
 
 export class UnsafeUrlError extends Error {}
@@ -41,7 +45,7 @@ function isPrivateIPv6(ip: string): boolean {
   return false;
 }
 
-function isPrivateIP(ip: string): boolean {
+export function isPrivateIP(ip: string): boolean {
   const version = net.isIP(ip);
   if (version === 4) return isPrivateIPv4(ip);
   if (version === 6) return isPrivateIPv6(ip);
@@ -69,19 +73,25 @@ export function parseAndValidateUrlShape(rawUrl: string): URL {
   return url;
 }
 
-/** Resolves the hostname and throws if any resolved address is private/reserved. */
-export async function assertPublicHost(hostname: string): Promise<void> {
+export type ResolvedAddress = { address: string; family: 4 | 6 };
+
+/**
+ * Resolves the hostname, throws if any resolved address is private/reserved,
+ * and returns the validated addresses so the caller can pin its connection to
+ * one of them instead of trusting a second, later DNS lookup.
+ */
+export async function resolvePublicHost(hostname: string): Promise<ResolvedAddress[]> {
   if (net.isIP(hostname)) {
     if (isPrivateIP(hostname)) {
       throw new UnsafeUrlError("Private or reserved addresses cannot be scanned.");
     }
-    return;
+    return [{ address: hostname, family: net.isIP(hostname) as 4 | 6 }];
   }
 
-  let addresses: string[];
+  let addresses: ResolvedAddress[];
   try {
     const results = await dns.lookup(hostname, { all: true, verbatim: false });
-    addresses = results.map((r) => r.address);
+    addresses = results.map((r) => ({ address: r.address, family: r.family as 4 | 6 }));
   } catch {
     throw new UnsafeUrlError("Could not resolve that hostname.");
   }
@@ -90,15 +100,11 @@ export async function assertPublicHost(hostname: string): Promise<void> {
     throw new UnsafeUrlError("Could not resolve that hostname.");
   }
 
-  for (const addr of addresses) {
-    if (isPrivateIP(addr)) {
+  for (const { address } of addresses) {
+    if (isPrivateIP(address)) {
       throw new UnsafeUrlError("That hostname resolves to a private or reserved address and cannot be scanned.");
     }
   }
-}
 
-export async function validateExternalUrl(rawUrl: string): Promise<URL> {
-  const url = parseAndValidateUrlShape(rawUrl);
-  await assertPublicHost(url.hostname);
-  return url;
+  return addresses;
 }

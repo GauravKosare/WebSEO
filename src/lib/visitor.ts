@@ -1,23 +1,20 @@
-import { randomUUID } from "node:crypto";
 import { cookies } from "next/headers";
 
 const VISITOR_COOKIE = "webseo_visitor_id";
 
-/** Anonymous per-browser id (no login), used to group scan history. Not a security boundary. */
-export async function getOrCreateVisitorId(): Promise<{ id: string; isNew: boolean }> {
+/**
+ * Reads the anonymous per-browser id used to group scan history (no login).
+ * The cookie itself is issued by middleware.ts (the only place allowed to set
+ * cookies ahead of every Server Component render) — by the time this runs,
+ * the cookie is guaranteed to exist.
+ */
+export async function getOrCreateVisitorId(): Promise<{ id: string }> {
   const store = await cookies();
-  const existing = store.get(VISITOR_COOKIE)?.value;
-  if (existing) return { id: existing, isNew: false };
-
-  const id = randomUUID();
-  store.set(VISITOR_COOKIE, id, {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    maxAge: 60 * 60 * 24 * 365,
-    path: "/",
-  });
-  return { id, isNew: true };
+  const id = store.get(VISITOR_COOKIE)?.value;
+  if (!id) {
+    throw new Error("Visitor cookie missing — middleware should have set it for every request.");
+  }
+  return { id };
 }
 
 export { VISITOR_COOKIE };

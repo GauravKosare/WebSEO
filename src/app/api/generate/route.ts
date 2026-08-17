@@ -9,6 +9,9 @@ import { parsePage } from "@/lib/audit/parsePage";
 import { generateContentSuggestions, AiUnavailableError } from "@/lib/ai/gemini";
 import { UnsafeUrlError } from "@/lib/audit/urlSafety";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 const bodySchema = z.object({ scanId: z.string() });
 
 export async function POST(req: NextRequest) {

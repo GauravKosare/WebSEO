@@ -45,6 +45,7 @@ const ScanSchema = new Schema(
       seoScore: Number,
       accessibilityScore: Number,
       isMobileFriendly: Boolean,
+      error: String,
     },
     aiContent: AiContentSchema,
     keywordIdeas: [KeywordIdeaSchema],

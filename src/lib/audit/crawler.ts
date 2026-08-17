@@ -1,7 +1,9 @@
-import { UnsafeUrlError, assertPublicHost, parseAndValidateUrlShape } from "./urlSafety";
+import { Agent, fetch as undiciFetch } from "undici";
+import { UnsafeUrlError, parseAndValidateUrlShape, resolvePublicHost } from "./urlSafety";
 
 const MAX_REDIRECTS = 5;
 const FETCH_TIMEOUT_MS = 10_000;
+const OVERALL_BUDGET_MS = 20_000; // keeps the whole crawl well inside our routes' maxDuration
 const MAX_BODY_BYTES = 3_000_000; // 3MB cap so a huge page can't exhaust memory
 const USER_AGENT = "WebSEO-Bot/1.0 (+https://github.com/GauravKosare/WebSEO)";
 
@@ -14,25 +16,54 @@ export type FetchedPage = {
 };
 
 /**
- * Fetches a page manually (redirect: "manual") so every hop can be re-validated
- * against the SSRF guard before being followed — `fetch`'s built-in redirect
- * follower would happily chase a redirect straight into a private address.
+ * Builds an undici Agent whose connector is pinned to a single, already
+ * SSRF-validated IP address. This closes the DNS-rebinding TOCTOU gap that a
+ * plain "resolve, check, then let fetch resolve again" approach has: fetch
+ * never gets to perform its own DNS lookup, so a hostname that answers
+ * differently between our check and the actual connection can't matter.
+ */
+function pinnedAgent(address: string, family: 4 | 6): Agent {
+  return new Agent({
+    connect: {
+      // Matches Node's dns.lookup callback shape; net.connect always invokes
+      // this with (hostname, options, callback), but handle the 2-arg form
+      // defensively too.
+      lookup: (_hostname, optionsOrCallback, maybeCallback) => {
+        const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
+        callback?.(null, address, family);
+      },
+    },
+  });
+}
+
+/**
+ * Fetches a page manually (redirect: "manual") so every hop can be
+ * re-validated against the SSRF guard — and re-pinned to a specific IP —
+ * before being followed.
  */
 export async function fetchPageSafely(rawUrl: string): Promise<FetchedPage> {
   let current = parseAndValidateUrlShape(rawUrl);
-  await assertPublicHost(current.hostname);
-
   const start = Date.now();
 
   for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    if (Date.now() - start > OVERALL_BUDGET_MS) {
+      throw new UnsafeUrlError("The site took too long to respond.");
+    }
+
+    const addresses = await resolvePublicHost(current.hostname);
+    // Prefer an IPv4 result for the pin when available; fall back to the first.
+    const chosen = addresses.find((a) => a.family === 4) ?? addresses[0];
+    const agent = pinnedAgent(chosen.address, chosen.family);
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-    let response: Response;
+    let response: Awaited<ReturnType<typeof undiciFetch>>;
     try {
-      response = await fetch(current.toString(), {
+      response = await undiciFetch(current.toString(), {
         redirect: "manual",
         signal: controller.signal,
+        dispatcher: agent,
         headers: {
           "User-Agent": USER_AGENT,
           Accept: "text/html,application/xhtml+xml",
@@ -55,9 +86,7 @@ export async function fetchPageSafely(rawUrl: string): Promise<FetchedPage> {
       const next = new URL(location, current);
       next.username = "";
       next.password = "";
-      const validated = parseAndValidateUrlShape(next.toString());
-      await assertPublicHost(validated.hostname);
-      current = validated;
+      current = parseAndValidateUrlShape(next.toString());
       continue;
     }
 

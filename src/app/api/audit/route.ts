@@ -9,6 +9,9 @@ import { runAuditRules } from "@/lib/audit/rules";
 import { getPageSpeedResult } from "@/lib/audit/pagespeed";
 import { UnsafeUrlError } from "@/lib/audit/urlSafety";
 
+export const runtime = "nodejs";
+export const maxDuration = 60;
+
 const bodySchema = z.object({ url: z.string().min(1).max(2048) });
 
 const MAX_SCANS_PER_HOUR = 10;
@@ -34,10 +37,11 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const page = await fetchPageSafely(normalizedUrl);
+    // PageSpeed only needs the URL (Google follows redirects itself), so run
+    // it concurrently with our own fetch+parse instead of waiting on it.
+    const [page, pageSpeed] = await Promise.all([fetchPageSafely(normalizedUrl), getPageSpeedResult(normalizedUrl)]);
     const parsedPage = parsePage(page.html, page.finalUrl);
     const { issues, score } = runAuditRules(parsedPage);
-    const pageSpeed = await getPageSpeedResult(page.finalUrl);
 
     const scan = await Scan.create({
       visitorId,
