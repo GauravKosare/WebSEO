@@ -42,6 +42,13 @@ function isPrivateIPv6(ip: string): boolean {
     if (v4 && v4.includes(".")) return isPrivateIPv4(v4);
     return true;
   }
+  // 6to4 (2002::/16) and NAT64 (64:ff9b::/96) both embed an IPv4 address that
+  // some network stacks can transparently tunnel/decapsulate to. We don't
+  // decode and re-check the embedded address — we just fail closed and
+  // reject the whole prefix, since we have no legitimate reason to fetch
+  // through a legacy IPv6 transition mechanism anyway.
+  if (norm.startsWith("2002:")) return true;
+  if (norm.startsWith("64:ff9b:")) return true;
   return false;
 }
 
