@@ -15,9 +15,11 @@ const IssueSchema = new Schema(
 const AiContentSchema = new Schema(
   {
     title: String,
+    titleRationale: String,
     metaDescription: String,
     h1: String,
     altTextSuggestions: [{ forImageSrc: String, suggestedAlt: String, _id: false }],
+    eeatRecommendations: [String],
     summary: String,
   },
   { _id: false }
@@ -27,8 +29,23 @@ const KeywordIdeaSchema = new Schema(
   {
     keyword: String,
     intent: String,
+    funnelStage: String,
+    keywordType: String,
     estimatedDifficulty: String,
     reason: String,
+  },
+  { _id: false }
+);
+
+const SeoStrategySchema = new Schema(
+  {
+    primaryKeyword: String,
+    searchIntent: String,
+    contentGapAnalysis: String,
+    recommendedHeadingOutline: [{ level: String, text: String, _id: false }],
+    recommendedWordCount: Number,
+    internalLinkingIdeas: [String],
+    schemaMarkupSuggestions: [String],
   },
   { _id: false }
 );
@@ -50,6 +67,7 @@ const ScanSchema = new Schema(
     },
     aiContent: AiContentSchema,
     keywordIdeas: [KeywordIdeaSchema],
+    seoStrategy: SeoStrategySchema,
     monitoringEnabled: { type: Boolean, default: false },
     scoreHistory: [{ score: Number, scannedAt: Date, _id: false }],
   },

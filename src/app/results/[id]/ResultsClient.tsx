@@ -12,17 +12,31 @@ type Issue = {
 
 type AiContent = {
   title: string;
+  titleRationale: string;
   metaDescription: string;
   h1: string;
   altTextSuggestions: { forImageSrc: string; suggestedAlt: string }[];
+  eeatRecommendations: string[];
   summary: string;
 };
 
 type KeywordIdea = {
   keyword: string;
   intent: string;
+  funnelStage: "awareness" | "consideration" | "decision";
+  keywordType: "primary" | "secondary" | "long-tail";
   estimatedDifficulty: "low" | "medium" | "high";
   reason: string;
+};
+
+type SeoStrategy = {
+  primaryKeyword: string;
+  searchIntent: string;
+  contentGapAnalysis: string;
+  recommendedHeadingOutline: { level: "H2" | "H3"; text: string }[];
+  recommendedWordCount: number;
+  internalLinkingIdeas: string[];
+  schemaMarkupSuggestions: string[];
 };
 
 export type ScanData = {
@@ -40,6 +54,7 @@ export type ScanData = {
   };
   aiContent?: AiContent;
   keywordIdeas?: KeywordIdea[];
+  seoStrategy?: SeoStrategy;
   monitoringEnabled?: boolean;
   createdAt: string;
 };
@@ -48,6 +63,12 @@ const SEVERITY_STYLES: Record<Issue["severity"], string> = {
   critical: "border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
   warning: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
   info: "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300",
+};
+
+const DIFFICULTY_STYLES: Record<KeywordIdea["estimatedDifficulty"], string> = {
+  low: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
+  medium: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  high: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
 };
 
 function ScoreRing({ score }: { score: number }) {
@@ -63,8 +84,9 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
   const [scan, setScan] = useState(initialScan);
   const [aiLoading, setAiLoading] = useState(false);
   const [keywordsLoading, setKeywordsLoading] = useState(false);
+  const [strategyLoading, setStrategyLoading] = useState(false);
   const [monitorLoading, setMonitorLoading] = useState(false);
-  const [errors, setErrors] = useState<{ ai?: string; keywords?: string }>({});
+  const [errors, setErrors] = useState<{ ai?: string; keywords?: string; strategy?: string }>({});
 
   async function generateAi() {
     setAiLoading(true);
@@ -104,6 +126,25 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
     }
   }
 
+  async function generateStrategy() {
+    setStrategyLoading(true);
+    setErrors((e) => ({ ...e, strategy: undefined }));
+    try {
+      const res = await fetch("/api/strategy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId: scan._id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to generate a content strategy.");
+      setScan((s) => ({ ...s, seoStrategy: data.seoStrategy }));
+    } catch (err) {
+      setErrors((e) => ({ ...e, strategy: err instanceof Error ? err.message : "Failed." }));
+    } finally {
+      setStrategyLoading(false);
+    }
+  }
+
   async function toggleMonitoring() {
     setMonitorLoading(true);
     try {
@@ -123,6 +164,8 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
     (acc[issue.category] ??= []).push(issue);
     return acc;
   }, {});
+
+  const hasStrategy = !!scan.seoStrategy;
 
   return (
     <div className="mx-auto max-w-4xl px-6 py-12">
@@ -188,10 +231,20 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
         {errors.ai && <p className="mt-2 text-sm text-red-600">{errors.ai}</p>}
         {scan.aiContent && (
           <div className="mt-4 space-y-4 text-sm">
-            <Field label="Suggested title" value={scan.aiContent.title} />
+            <Field label="Suggested title" value={scan.aiContent.title} hint={scan.aiContent.titleRationale} />
             <Field label="Suggested meta description" value={scan.aiContent.metaDescription} />
             <Field label="Suggested H1" value={scan.aiContent.h1} />
             <p className="text-neutral-600 dark:text-neutral-400">{scan.aiContent.summary}</p>
+            {scan.aiContent.eeatRecommendations.length > 0 && (
+              <div>
+                <p className="font-medium">Trust &amp; credibility (E-E-A-T) signals to add</p>
+                <ul className="mt-1 list-inside list-disc space-y-1 text-neutral-600 dark:text-neutral-400">
+                  {scan.aiContent.eeatRecommendations.map((r, i) => (
+                    <li key={i}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
             {scan.aiContent.altTextSuggestions.length > 0 && (
               <div>
                 <p className="font-medium">Alt text suggestions</p>
@@ -229,8 +282,10 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
               <thead>
                 <tr className="border-b border-neutral-200 text-neutral-500 dark:border-neutral-800">
                   <th className="py-2 pr-4">Keyword</th>
+                  <th className="py-2 pr-4">Type</th>
+                  <th className="py-2 pr-4">Funnel</th>
                   <th className="py-2 pr-4">Intent</th>
-                  <th className="py-2 pr-4">Est. difficulty</th>
+                  <th className="py-2 pr-4">Difficulty</th>
                   <th className="py-2">Why</th>
                 </tr>
               </thead>
@@ -238,14 +293,81 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
                 {scan.keywordIdeas.map((k, i) => (
                   <tr key={i} className="border-b border-neutral-100 dark:border-neutral-900">
                     <td className="py-2 pr-4 font-medium">{k.keyword}</td>
+                    <td className="py-2 pr-4 capitalize">{k.keywordType}</td>
+                    <td className="py-2 pr-4 capitalize">{k.funnelStage}</td>
                     <td className="py-2 pr-4 capitalize">{k.intent}</td>
-                    <td className="py-2 pr-4 capitalize">{k.estimatedDifficulty}</td>
+                    <td className="py-2 pr-4">
+                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${DIFFICULTY_STYLES[k.estimatedDifficulty]}`}>
+                        {k.estimatedDifficulty}
+                      </span>
+                    </td>
                     <td className="py-2 text-neutral-600 dark:text-neutral-400">{k.reason}</td>
                   </tr>
                 ))}
               </tbody>
             </table>
             <p className="mt-2 text-xs text-neutral-500">AI estimates based on page content, not real search-volume data.</p>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">AI content strategy</h2>
+            <p className="text-xs text-neutral-500">A rewrite brief for actually competing for rankings, not just tag fixes.</p>
+          </div>
+          {!hasStrategy && (
+            <button
+              onClick={generateStrategy}
+              disabled={strategyLoading}
+              className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {strategyLoading ? "Generating…" : "Generate strategy"}
+            </button>
+          )}
+        </div>
+        {errors.strategy && <p className="mt-2 text-sm text-red-600">{errors.strategy}</p>}
+        {scan.seoStrategy && (
+          <div className="mt-4 space-y-5 text-sm">
+            <div className="flex flex-wrap gap-6">
+              <Field label="Primary keyword" value={scan.seoStrategy.primaryKeyword} />
+              <Field label="Search intent" value={scan.seoStrategy.searchIntent} className="capitalize" />
+              <Field label="Target word count" value={`~${scan.seoStrategy.recommendedWordCount.toLocaleString()} words`} />
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Content gap analysis</p>
+              <p className="mt-0.5 text-neutral-700 dark:text-neutral-300">{scan.seoStrategy.contentGapAnalysis}</p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Recommended heading outline</p>
+              <ul className="mt-1 space-y-1">
+                {scan.seoStrategy.recommendedHeadingOutline.map((h, i) => (
+                  <li key={i} className={h.level === "H3" ? "ml-4 text-neutral-600 dark:text-neutral-400" : "font-medium"}>
+                    <span className="mr-2 text-xs text-neutral-400">{h.level}</span>
+                    {h.text}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Internal linking ideas</p>
+                <ul className="mt-1 list-inside list-disc space-y-1 text-neutral-600 dark:text-neutral-400">
+                  {scan.seoStrategy.internalLinkingIdeas.map((idea, i) => (
+                    <li key={i}>{idea}</li>
+                  ))}
+                </ul>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Structured data to add</p>
+                <ul className="mt-1 list-inside list-disc space-y-1 text-neutral-600 dark:text-neutral-400">
+                  {scan.seoStrategy.schemaMarkupSuggestions.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
           </div>
         )}
       </section>
@@ -262,11 +384,12 @@ function Metric({ label, value }: { label: string; value: number | null }) {
   );
 }
 
-function Field({ label, value }: { label: string; value: string }) {
+function Field({ label, value, hint, className }: { label: string; value: string; hint?: string; className?: string }) {
   return (
     <div>
       <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</p>
-      <p className="mt-0.5">{value}</p>
+      <p className={`mt-0.5 ${className ?? ""}`}>{value}</p>
+      {hint && <p className="mt-0.5 text-xs text-neutral-500">{hint}</p>}
     </div>
   );
 }
