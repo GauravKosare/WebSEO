@@ -25,12 +25,20 @@ export type FetchedPage = {
 function pinnedAgent(address: string, family: 4 | 6): Agent {
   return new Agent({
     connect: {
-      // Matches Node's dns.lookup callback shape; net.connect always invokes
-      // this with (hostname, options, callback), but handle the 2-arg form
-      // defensively too.
+      // Node's net module resolves via lookupAndConnectMultiple (Happy
+      // Eyeballs) by default, which calls this with { all: true } and expects
+      // an array of {address, family} back — not the single (address,
+      // family) pair dns.lookup's plain callback form takes. Handle both so
+      // this works regardless of which internal path net picks.
       lookup: (_hostname, optionsOrCallback, maybeCallback) => {
+        const options = typeof optionsOrCallback === "function" ? undefined : optionsOrCallback;
         const callback = typeof optionsOrCallback === "function" ? optionsOrCallback : maybeCallback;
-        callback?.(null, address, family);
+        if (!callback) return;
+        if (options && "all" in options && options.all) {
+          callback(null, [{ address, family }]);
+        } else {
+          callback(null, address, family);
+        }
       },
     },
   });

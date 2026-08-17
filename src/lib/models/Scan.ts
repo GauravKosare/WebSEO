@@ -36,6 +36,7 @@ const KeywordIdeaSchema = new Schema(
 const ScanSchema = new Schema(
   {
     visitorId: { type: String, required: true, index: true },
+    clientIp: { type: String, index: true },
     url: { type: String, required: true },
     finalUrl: String,
     score: { type: Number, required: true },

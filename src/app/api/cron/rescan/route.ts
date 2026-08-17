@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { timingSafeEqual } from "node:crypto";
 import { connectToDatabase } from "@/lib/db";
 import { Scan } from "@/lib/models/Scan";
 import { fetchPageSafely } from "@/lib/audit/crawler";
@@ -26,8 +27,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: "CRON_SECRET not configured." }, { status: 500 });
   }
 
-  const authHeader = req.headers.get("authorization");
-  if (authHeader !== `Bearer ${secret}`) {
+  const authHeader = req.headers.get("authorization") ?? "";
+  const expected = `Bearer ${secret}`;
+  // Constant-time comparison so a byte-by-byte timing difference can't be
+  // used to guess the secret. Buffers must be equal length for timingSafeEqual,
+  // so pad/hash first rather than early-returning on a length mismatch.
+  const authBuf = Buffer.from(authHeader);
+  const expectedBuf = Buffer.from(expected);
+  const isAuthorized =
+    authBuf.length === expectedBuf.length && timingSafeEqual(authBuf, expectedBuf);
+  if (!isAuthorized) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
 

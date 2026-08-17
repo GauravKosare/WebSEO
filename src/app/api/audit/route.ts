@@ -3,6 +3,7 @@ import { z } from "zod";
 import { connectToDatabase } from "@/lib/db";
 import { Scan } from "@/lib/models/Scan";
 import { getOrCreateVisitorId } from "@/lib/visitor";
+import { getClientIp } from "@/lib/clientIp";
 import { fetchPageSafely } from "@/lib/audit/crawler";
 import { parsePage } from "@/lib/audit/parsePage";
 import { runAuditRules } from "@/lib/audit/rules";
@@ -24,9 +25,15 @@ export async function POST(req: NextRequest) {
 
   await connectToDatabase();
   const { id: visitorId } = await getOrCreateVisitorId();
+  const clientIp = getClientIp(req);
 
+  // Rate-limit by both the visitor cookie and the client IP — clearing
+  // cookies alone (the cheapest bypass) still hits the IP-keyed limit.
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const recentCount = await Scan.countDocuments({ visitorId, createdAt: { $gte: oneHourAgo } });
+  const recentCount = await Scan.countDocuments({
+    createdAt: { $gte: oneHourAgo },
+    $or: [{ visitorId }, ...(clientIp ? [{ clientIp }] : [])],
+  });
   if (recentCount >= MAX_SCANS_PER_HOUR) {
     return NextResponse.json({ error: "Scan limit reached. Please try again later." }, { status: 429 });
   }
@@ -45,6 +52,7 @@ export async function POST(req: NextRequest) {
 
     const scan = await Scan.create({
       visitorId,
+      clientIp,
       url: normalizedUrl,
       finalUrl: page.finalUrl,
       score,
