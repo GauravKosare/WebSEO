@@ -212,7 +212,7 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
       <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-semibold">Keyword ideas</h2>
-          {!scan.keywordIdeas && (
+          {(!scan.keywordIdeas || scan.keywordIdeas.length === 0) && (
             <button
               onClick={generateKeywords}
               disabled={keywordsLoading}
@@ -223,7 +223,7 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
           )}
         </div>
         {errors.keywords && <p className="mt-2 text-sm text-red-600">{errors.keywords}</p>}
-        {scan.keywordIdeas && (
+        {scan.keywordIdeas && scan.keywordIdeas.length > 0 && (
           <div className="mt-4 overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead>
