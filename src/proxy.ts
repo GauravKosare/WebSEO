@@ -8,7 +8,7 @@ import { VISITOR_COOKIE } from "@/lib/visitor";
  * guarantees the cookie already exists by the time any page component (e.g.
  * /history, /results/[id]) renders, so those can safely just read it.
  */
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const existing = req.cookies.get(VISITOR_COOKIE)?.value;
   if (existing) return NextResponse.next();
 
