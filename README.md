@@ -19,6 +19,7 @@ AI-generated content fixes and keyword ideas. No account required.
    - `GEMINI_API_KEY` — free key from [Google AI Studio](https://aistudio.google.com/apikey)
    - `PAGESPEED_API_KEY` — a Google Cloud API key with the PageSpeed Insights API enabled
    - `CRON_SECRET` — any long random string
+   - `BREVO_API_KEY` / `BREVO_FROM_EMAIL` — optional, only needed for the "Email report" button (free tier at [Brevo](https://app.brevo.com/settings/keys/api); the sender address must be verified in your Brevo account first)
 2. Install dependencies and run:
 
 ```bash
