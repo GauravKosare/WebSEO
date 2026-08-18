@@ -22,7 +22,7 @@ export type FetchedPage = {
  * never gets to perform its own DNS lookup, so a hostname that answers
  * differently between our check and the actual connection can't matter.
  */
-function pinnedAgent(address: string, family: 4 | 6): Agent {
+export function pinnedAgent(address: string, family: 4 | 6): Agent {
   return new Agent({
     connect: {
       // Node's net module resolves via lookupAndConnectMultiple (Happy

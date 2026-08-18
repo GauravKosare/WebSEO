@@ -50,6 +50,58 @@ const SeoStrategySchema = new Schema(
   { _id: false }
 );
 
+// Wrapped in a real Schema (not a plain nested object literal) so the whole
+// field defaults to `undefined` when unset, matching aiContent/seoStrategy —
+// a plain object literal here would get auto-vivified by Mongoose into an
+// object with an empty `results: []`, making "not checked yet" indistinguishable
+// from "checked, zero results" via a truthy check.
+const LinkCheckSchema = new Schema(
+  {
+    checkedAt: Date,
+    brokenCount: Number,
+    longRedirectCount: Number,
+    results: [
+      {
+        url: String,
+        status: { type: String, enum: ["ok", "broken", "redirect", "error"] },
+        statusCode: Number,
+        redirectCount: Number,
+        finalUrl: String,
+        _id: false,
+      },
+    ],
+  },
+  { _id: false }
+);
+
+const CompetitorComparisonSchema = new Schema(
+  {
+    competitorUrl: String,
+    competitorFinalUrl: String,
+    competitorScore: Number,
+    scoreDelta: Number,
+    gapAnalysis: String,
+    competitorAdvantages: [String],
+    ourAdvantages: [String],
+    keywordGaps: [String],
+  },
+  { _id: false }
+);
+
+// Also a real Schema: parsePage's readability can be explicitly null (not
+// enough text on the page), and a plain nested-object path doesn't store an
+// explicit null cleanly.
+const ReadabilitySchema = new Schema(
+  {
+    fleschScore: Number,
+    gradeLevel: String,
+    sentenceCount: Number,
+    wordCount: Number,
+    avgWordsPerSentence: Number,
+  },
+  { _id: false }
+);
+
 const ScanSchema = new Schema(
   {
     visitorId: { type: String, required: true, index: true },
@@ -68,6 +120,10 @@ const ScanSchema = new Schema(
     aiContent: AiContentSchema,
     keywordIdeas: [KeywordIdeaSchema],
     seoStrategy: SeoStrategySchema,
+    readability: ReadabilitySchema,
+    internalLinkUrls: [String],
+    linkCheck: LinkCheckSchema,
+    competitorComparison: CompetitorComparisonSchema,
     monitoringEnabled: { type: Boolean, default: false },
     scoreHistory: [{ score: Number, scannedAt: Date, _id: false }],
   },

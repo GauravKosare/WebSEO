@@ -269,3 +269,62 @@ Produce:
 
   return (await callGemini(prompt, schema)) as SeoStrategy;
 }
+
+export type CompetitorComparison = {
+  gapAnalysis: string;
+  competitorAdvantages: string[];
+  ourAdvantages: string[];
+  keywordGaps: string[];
+};
+
+export async function generateCompetitorGapAnalysis(
+  ourPage: ParsedPage,
+  ourIssues: Issue[],
+  ourUrl: string,
+  competitorPage: ParsedPage,
+  competitorIssues: Issue[],
+  competitorUrl: string
+): Promise<CompetitorComparison> {
+  const prompt = `${SEO_EXPERT_PERSONA}
+
+Compare these two pages that compete for the same kind of search traffic, the way a strategist would before recommending what to change.
+
+${UNTRUSTED_DATA_FRAMING}
+
+<scraped-page label="ours">
+URL: ${ourUrl}
+Title: ${ourPage.title ?? "(none)"}
+Meta description: ${ourPage.metaDescription ?? "(none)"}
+Word count: ${ourPage.wordCount}
+Technical issues: ${ourIssues.map((i) => i.title).join(", ") || "none"}
+Text sample: ${ourPage.textSample.slice(0, 1200)}
+</scraped-page>
+
+<scraped-page label="competitor">
+URL: ${competitorUrl}
+Title: ${competitorPage.title ?? "(none)"}
+Meta description: ${competitorPage.metaDescription ?? "(none)"}
+Word count: ${competitorPage.wordCount}
+Technical issues: ${competitorIssues.map((i) => i.title).join(", ") || "none"}
+Text sample: ${competitorPage.textSample.slice(0, 1200)}
+</scraped-page>
+
+Produce, concisely:
+1. A 2-4 sentence gap analysis: what does the competitor cover or do better that ours should address to compete for the same rankings?
+2. 2-4 specific competitor advantages (topics, depth, structure, or trust signals they have that we don't) — not generic ("more content"), name the actual thing.
+3. 2-4 specific advantages our page already has over theirs (if any — be honest, say "none identified" implicitly via an empty list if there genuinely aren't any).
+4. 3-5 keyword/topic gaps: things the competitor's page targets or covers that ours doesn't.`;
+
+  const schema = {
+    type: "object",
+    properties: {
+      gapAnalysis: { type: "string" },
+      competitorAdvantages: { type: "array", items: { type: "string" } },
+      ourAdvantages: { type: "array", items: { type: "string" } },
+      keywordGaps: { type: "array", items: { type: "string" } },
+    },
+    required: ["gapAnalysis", "competitorAdvantages", "ourAdvantages", "keywordGaps"],
+  };
+
+  return (await callGemini(prompt, schema)) as CompetitorComparison;
+}

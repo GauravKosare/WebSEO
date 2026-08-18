@@ -100,6 +100,29 @@ export function runAuditRules(page: ParsedPage): { issues: Issue[]; score: numbe
     issues.push(issue("internal-links-missing", "warning", "Links", "No internal links found", "Internal links help search engines discover and understand the relationships between your pages."));
   }
 
+  // Readability
+  if (page.readability && page.readability.fleschScore < 30) {
+    issues.push(
+      issue(
+        "readability-difficult",
+        "warning",
+        "Content",
+        "Content is hard to read",
+        `Flesch Reading Ease score of ${page.readability.fleschScore} (${page.readability.gradeLevel}) — long sentences and complex words hurt both user engagement and how well content satisfies search intent. Aim for at least 50.`
+      )
+    );
+  } else if (page.readability && page.readability.fleschScore < 50) {
+    issues.push(
+      issue(
+        "readability-fair",
+        "info",
+        "Content",
+        "Content readability could improve",
+        `Flesch Reading Ease score of ${page.readability.fleschScore} (${page.readability.gradeLevel}). Shorter sentences and simpler words tend to perform better for most search intents.`
+      )
+    );
+  }
+
   const totalDeduction = issues.reduce((sum, i) => sum + i.points, 0);
   const score = Math.max(0, 100 - totalDeduction);
 

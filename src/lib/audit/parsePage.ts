@@ -1,4 +1,8 @@
 import * as cheerio from "cheerio";
+import { computeReadability, type ReadabilityResult } from "./readability";
+
+const MAX_LINKS_CAPTURED = 40;
+const MAX_READABILITY_TEXT = 20_000;
 
 export type ParsedPage = {
   title: string | null;
@@ -12,9 +16,11 @@ export type ParsedPage = {
   images: { src: string | undefined; alt: string | undefined }[];
   internalLinks: number;
   externalLinks: number;
+  internalLinkUrls: string[];
   hasViewportMeta: boolean;
   hasOpenGraph: boolean;
   hasStructuredData: boolean;
+  readability: ReadabilityResult | null;
   textSample: string;
 };
 
@@ -43,13 +49,24 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
 
   let internalLinks = 0;
   let externalLinks = 0;
+  const internalLinkUrls: string[] = [];
+  const seenInternal = new Set<string>();
   $("a[href]").each((_, el) => {
     const href = $(el).attr("href");
     if (!href || href.startsWith("#") || href.startsWith("mailto:") || href.startsWith("tel:")) return;
     try {
       const resolved = new URL(href, pageUrl);
-      if (resolved.origin === origin) internalLinks++;
-      else externalLinks++;
+      resolved.hash = "";
+      if (resolved.origin === origin) {
+        internalLinks++;
+        const normalized = resolved.toString();
+        if (!seenInternal.has(normalized) && internalLinkUrls.length < MAX_LINKS_CAPTURED) {
+          seenInternal.add(normalized);
+          internalLinkUrls.push(normalized);
+        }
+      } else {
+        externalLinks++;
+      }
     } catch {
       // ignore unparsable hrefs
     }
@@ -58,6 +75,20 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
   const hasViewportMeta = $('meta[name="viewport"]').length > 0;
   const hasOpenGraph = $('meta[property^="og:"]').length > 0;
   const hasStructuredData = $('script[type="application/ld+json"]').length > 0;
+
+  // Readability needs actual prose, not the full page body — nav links,
+  // buttons, and other UI chrome have no sentence punctuation, which tanks a
+  // Flesch score computed over raw body text (e.g. a run of nav labels reads
+  // as one "sentence" with dozens of "words"). <p> tags are a reasonable
+  // proxy for prose across most sites.
+  const paragraphText = $("p")
+    .map((_, el) => $(el).text().trim())
+    .get()
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const readability = computeReadability(paragraphText.slice(0, MAX_READABILITY_TEXT));
 
   return {
     title,
@@ -71,9 +102,11 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
     images,
     internalLinks,
     externalLinks,
+    internalLinkUrls,
     hasViewportMeta,
     hasOpenGraph,
     hasStructuredData,
+    readability,
     textSample: bodyText.slice(0, 4000),
   };
 }

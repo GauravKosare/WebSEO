@@ -55,8 +55,41 @@ export type ScanData = {
   aiContent?: AiContent;
   keywordIdeas?: KeywordIdea[];
   seoStrategy?: SeoStrategy;
+  readability?: {
+    fleschScore: number;
+    gradeLevel: string;
+    sentenceCount: number;
+    wordCount: number;
+    avgWordsPerSentence: number;
+  } | null;
+  internalLinkUrls?: string[];
+  linkCheck?: {
+    checkedAt?: string;
+    brokenCount?: number;
+    longRedirectCount?: number;
+    results?: { url: string; status: "ok" | "redirect" | "broken" | "error"; statusCode: number | null; redirectCount: number; finalUrl: string | null }[];
+  };
+  competitorComparison?: {
+    competitorUrl?: string;
+    competitorFinalUrl?: string;
+    competitorScore?: number;
+    scoreDelta?: number;
+    gapAnalysis?: string;
+    competitorAdvantages?: string[];
+    ourAdvantages?: string[];
+    keywordGaps?: string[];
+  };
   monitoringEnabled?: boolean;
   createdAt: string;
+};
+
+type LinkStatus = "ok" | "redirect" | "broken" | "error";
+
+const LINK_STATUS_STYLES: Record<LinkStatus, string> = {
+  ok: "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300",
+  redirect: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+  broken: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
+  error: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300",
 };
 
 const SEVERITY_STYLES: Record<Issue["severity"], string> = {
@@ -85,8 +118,11 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
   const [aiLoading, setAiLoading] = useState(false);
   const [keywordsLoading, setKeywordsLoading] = useState(false);
   const [strategyLoading, setStrategyLoading] = useState(false);
+  const [linksLoading, setLinksLoading] = useState(false);
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [competitorUrl, setCompetitorUrl] = useState("");
   const [monitorLoading, setMonitorLoading] = useState(false);
-  const [errors, setErrors] = useState<{ ai?: string; keywords?: string; strategy?: string }>({});
+  const [errors, setErrors] = useState<{ ai?: string; keywords?: string; strategy?: string; links?: string; compare?: string }>({});
 
   async function generateAi() {
     setAiLoading(true);
@@ -145,6 +181,46 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
     }
   }
 
+  async function checkLinksHandler() {
+    setLinksLoading(true);
+    setErrors((e) => ({ ...e, links: undefined }));
+    try {
+      const res = await fetch("/api/links", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId: scan._id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to check links.");
+      setScan((s) => ({ ...s, linkCheck: data.linkCheck }));
+    } catch (err) {
+      setErrors((e) => ({ ...e, links: err instanceof Error ? err.message : "Failed." }));
+    } finally {
+      setLinksLoading(false);
+    }
+  }
+
+  async function compareCompetitor(e: React.FormEvent) {
+    e.preventDefault();
+    if (!competitorUrl.trim()) return;
+    setCompareLoading(true);
+    setErrors((e) => ({ ...e, compare: undefined }));
+    try {
+      const res = await fetch("/api/compare", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId: scan._id, competitorUrl: competitorUrl.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to compare against that competitor.");
+      setScan((s) => ({ ...s, competitorComparison: data.competitorComparison }));
+    } catch (err) {
+      setErrors((e) => ({ ...e, compare: err instanceof Error ? err.message : "Failed." }));
+    } finally {
+      setCompareLoading(false);
+    }
+  }
+
   async function toggleMonitoring() {
     setMonitorLoading(true);
     try {
@@ -193,6 +269,18 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
       )}
       {scan.pageSpeed?.error && (
         <p className="mt-2 text-xs text-neutral-500">Speed data unavailable: {scan.pageSpeed.error}</p>
+      )}
+
+      {scan.readability && (
+        <div className="mt-6 flex items-center justify-between rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+          <div>
+            <p className="text-sm font-medium">Readability</p>
+            <p className="text-xs text-neutral-500">
+              {scan.readability.gradeLevel} · {scan.readability.avgWordsPerSentence} words/sentence avg
+            </p>
+          </div>
+          <p className="text-2xl font-semibold">{scan.readability.fleschScore}</p>
+        </div>
       )}
 
       <section className="mt-10">
@@ -314,6 +402,69 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
       <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
         <div className="flex items-center justify-between">
           <div>
+            <h2 className="text-xl font-semibold">Link health</h2>
+            <p className="text-xs text-neutral-500">
+              Checks up to 20 internal links found on this page for broken links (4xx/5xx) and long redirect chains.
+            </p>
+          </div>
+          {!scan.linkCheck?.checkedAt && (
+            <button
+              onClick={checkLinksHandler}
+              disabled={linksLoading || !scan.internalLinkUrls?.length}
+              className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              {linksLoading ? "Checking…" : "Check links"}
+            </button>
+          )}
+        </div>
+        {errors.links && <p className="mt-2 text-sm text-red-600">{errors.links}</p>}
+        {!scan.internalLinkUrls?.length && !scan.linkCheck?.checkedAt && (
+          <p className="mt-2 text-xs text-neutral-500">No internal links were found on this page.</p>
+        )}
+        {scan.linkCheck?.checkedAt && (
+          <div className="mt-4">
+            <div className="flex gap-6 text-sm">
+              <p>
+                <span className="font-semibold text-red-600">{scan.linkCheck.brokenCount}</span> broken
+              </p>
+              <p>
+                <span className="font-semibold text-amber-600">{scan.linkCheck.longRedirectCount}</span> redirect chains
+              </p>
+              <p className="text-neutral-500">{(scan.linkCheck.results ?? []).length} checked</p>
+            </div>
+            <div className="mt-3 overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-neutral-200 text-neutral-500 dark:border-neutral-800">
+                    <th className="py-2 pr-4">URL</th>
+                    <th className="py-2 pr-4">Status</th>
+                    <th className="py-2 pr-4">Code</th>
+                    <th className="py-2">Redirects</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(scan.linkCheck.results ?? []).map((r, i) => (
+                    <tr key={i} className="border-b border-neutral-100 dark:border-neutral-900">
+                      <td className="max-w-xs truncate py-2 pr-4 font-mono text-xs" title={r.url}>
+                        {r.url}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${LINK_STATUS_STYLES[r.status]}`}>{r.status}</span>
+                      </td>
+                      <td className="py-2 pr-4">{r.statusCode ?? "—"}</td>
+                      <td className="py-2">{r.redirectCount}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
+        <div className="flex items-center justify-between">
+          <div>
             <h2 className="text-xl font-semibold">AI content strategy</h2>
             <p className="text-xs text-neutral-500">A rewrite brief for actually competing for rankings, not just tag fixes.</p>
           </div>
@@ -367,6 +518,83 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
                   ))}
                 </ul>
               </div>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
+        <div>
+          <h2 className="text-xl font-semibold">Competitor comparison</h2>
+          <p className="text-xs text-neutral-500">Scan a competing page and see where it beats yours.</p>
+        </div>
+        <form onSubmit={compareCompetitor} className="mt-4 flex gap-2">
+          <input
+            type="text"
+            value={competitorUrl}
+            onChange={(e) => setCompetitorUrl(e.target.value)}
+            placeholder="competitor.com"
+            disabled={compareLoading}
+            className="flex-1 rounded-lg border border-neutral-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900"
+          />
+          <button
+            type="submit"
+            disabled={compareLoading}
+            className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {compareLoading ? "Comparing…" : "Compare"}
+          </button>
+        </form>
+        {errors.compare && <p className="mt-2 text-sm text-red-600">{errors.compare}</p>}
+        {scan.competitorComparison?.competitorUrl && (
+          <div className="mt-5 space-y-5 text-sm">
+            <div className="flex items-center gap-8 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+              <div>
+                <p className="text-xs text-neutral-500">Your score</p>
+                <p className="text-2xl font-semibold">{scan.score}</p>
+              </div>
+              <div>
+                <p className="text-xs text-neutral-500">{scan.competitorComparison.competitorFinalUrl}</p>
+                <p className="text-2xl font-semibold">{scan.competitorComparison.competitorScore}</p>
+              </div>
+              <p
+                className={`ml-auto text-sm font-medium ${(scan.competitorComparison.scoreDelta ?? 0) >= 0 ? "text-green-600" : "text-red-600"}`}
+              >
+                {(scan.competitorComparison.scoreDelta ?? 0) >= 0 ? "+" : ""}
+                {scan.competitorComparison.scoreDelta} vs. competitor
+              </p>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Gap analysis</p>
+              <p className="mt-0.5 text-neutral-700 dark:text-neutral-300">{scan.competitorComparison.gapAnalysis}</p>
+            </div>
+            <div className="grid gap-5 sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Where the competitor is ahead</p>
+                <ul className="mt-1 list-inside list-disc space-y-1 text-neutral-600 dark:text-neutral-400">
+                  {(scan.competitorComparison.competitorAdvantages ?? []).map((a, i) => (
+                    <li key={i}>{a}</li>
+                  ))}
+                  {(scan.competitorComparison.competitorAdvantages ?? []).length === 0 && <li>None identified.</li>}
+                </ul>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Where you're ahead</p>
+                <ul className="mt-1 list-inside list-disc space-y-1 text-neutral-600 dark:text-neutral-400">
+                  {(scan.competitorComparison.ourAdvantages ?? []).map((a, i) => (
+                    <li key={i}>{a}</li>
+                  ))}
+                  {(scan.competitorComparison.ourAdvantages ?? []).length === 0 && <li>None identified.</li>}
+                </ul>
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-neutral-500">Keyword/topic gaps</p>
+              <ul className="mt-1 list-inside list-disc space-y-1 text-neutral-600 dark:text-neutral-400">
+                {(scan.competitorComparison.keywordGaps ?? []).map((k, i) => (
+                  <li key={i}>{k}</li>
+                ))}
+              </ul>
             </div>
           </div>
         )}

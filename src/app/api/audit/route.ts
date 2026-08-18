@@ -58,6 +58,8 @@ export async function POST(req: NextRequest) {
       score,
       issues,
       pageSpeed,
+      readability: parsedPage.readability,
+      internalLinkUrls: parsedPage.internalLinkUrls,
       scoreHistory: [{ score, scannedAt: new Date() }],
     });
 
