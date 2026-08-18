@@ -24,6 +24,14 @@ const SiteCrawlSchema = new Schema(
     pages: [CrawledPageSchema],
     overallScore: Number,
     skippedForTime: { type: Number, default: 0 },
+    validationIssues: [
+      {
+        severity: { type: String, enum: ["critical", "warning", "info"] },
+        title: String,
+        detail: String,
+        _id: false,
+      },
+    ],
   },
   { timestamps: true }
 );

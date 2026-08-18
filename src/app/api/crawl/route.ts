@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const { sitemapUrl, urls } = await discoverSitemapUrls(normalizedUrl);
+    const { sitemapUrl, urls, validationIssues } = await discoverSitemapUrls(normalizedUrl);
     const targets = urls.slice(0, MAX_PAGES_PER_CRAWL);
 
     const start = Date.now();
@@ -106,6 +106,7 @@ export async function POST(req: NextRequest) {
       pages: scannedPages,
       overallScore,
       skippedForTime,
+      validationIssues,
     });
 
     return NextResponse.json({ id: crawl._id.toString() }, { status: 201 });

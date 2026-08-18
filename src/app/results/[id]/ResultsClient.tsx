@@ -62,6 +62,14 @@ export type ScanData = {
     wordCount: number;
     avgWordsPerSentence: number;
   } | null;
+  localSeo?: {
+    structuredDataTypes: string[];
+    hasLocalBusinessSchema: boolean;
+    hasPhoneNumber: boolean;
+    hasAddressPattern: boolean;
+    hasEmbeddedMap: boolean;
+    hasHoursText: boolean;
+  };
   internalLinkUrls?: string[];
   linkCheck?: {
     checkedAt?: string;
@@ -80,6 +88,7 @@ export type ScanData = {
     keywordGaps?: string[];
   };
   monitoringEnabled?: boolean;
+  scoreHistory?: { score: number; performanceScore?: number | null; accessibilityScore?: number | null; scannedAt: string }[];
   createdAt: string;
 };
 
@@ -283,6 +292,14 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
         </div>
       )}
 
+      {scan.scoreHistory && scan.scoreHistory.length > 1 && (
+        <div className="mt-6 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+          <p className="text-sm font-medium">Score trend</p>
+          <p className="mb-3 text-xs text-neutral-500">From daily monitoring — SEO score and PageSpeed performance over time.</p>
+          <TrendChart history={scan.scoreHistory} />
+        </div>
+      )}
+
       <section className="mt-10">
         <h2 className="text-xl font-semibold">Issues found ({scan.issues.length})</h2>
         <div className="mt-4 space-y-6">
@@ -462,6 +479,28 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
         )}
       </section>
 
+      {scan.localSeo && (
+        <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
+          <h2 className="text-xl font-semibold">Local SEO signals</h2>
+          <p className="text-xs text-neutral-500">
+            For businesses with a physical location or service area. Detected on-page — not connected to your actual Google
+            Business Profile.
+          </p>
+          <ul className="mt-4 grid gap-2 text-sm sm:grid-cols-2">
+            <LocalSeoCheck ok={scan.localSeo.hasLocalBusinessSchema} label="LocalBusiness structured data" />
+            <LocalSeoCheck ok={scan.localSeo.hasPhoneNumber} label="Phone number found" />
+            <LocalSeoCheck ok={scan.localSeo.hasAddressPattern} label="Physical address found" />
+            <LocalSeoCheck ok={scan.localSeo.hasEmbeddedMap} label="Embedded map" />
+            <LocalSeoCheck ok={scan.localSeo.hasHoursText} label="Hours of operation text" />
+          </ul>
+          {scan.localSeo.structuredDataTypes.length > 0 && (
+            <p className="mt-3 text-xs text-neutral-500">
+              Structured data types found: {scan.localSeo.structuredDataTypes.join(", ")}
+            </p>
+          )}
+        </section>
+      )}
+
       <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
         <div className="flex items-center justify-between">
           <div>
@@ -600,6 +639,89 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
         )}
       </section>
     </div>
+  );
+}
+
+const CHART_WIDTH = 600;
+const CHART_HEIGHT = 140;
+const CHART_PAD = 8;
+
+function buildLinePath(points: (number | null | undefined)[]): string {
+  const validIndices = points.map((v, i) => (typeof v === "number" ? i : -1)).filter((i) => i >= 0);
+  if (validIndices.length === 0) return "";
+  const stepX = points.length > 1 ? (CHART_WIDTH - CHART_PAD * 2) / (points.length - 1) : 0;
+  const toXY = (i: number, v: number) => {
+    const x = CHART_PAD + stepX * i;
+    const y = CHART_PAD + (1 - v / 100) * (CHART_HEIGHT - CHART_PAD * 2);
+    return `${x},${y}`;
+  };
+  return validIndices.map((i) => toXY(i, points[i] as number)).join(" L ");
+}
+
+function TrendChart({
+  history,
+}: {
+  history: { score: number; performanceScore?: number | null; accessibilityScore?: number | null; scannedAt: string }[];
+}) {
+  const scores = history.map((h) => h.score);
+  const perf = history.map((h) => h.performanceScore ?? null);
+  const hasPerf = perf.some((v) => typeof v === "number");
+
+  const scorePath = buildLinePath(scores);
+  const perfPath = hasPerf ? buildLinePath(perf) : "";
+
+  const firstDate = new Date(history[0].scannedAt);
+  const lastDate = new Date(history[history.length - 1].scannedAt);
+
+  return (
+    <div>
+      <svg viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`} className="w-full" preserveAspectRatio="none">
+        {[0, 25, 50, 75, 100].map((y) => (
+          <line
+            key={y}
+            x1={CHART_PAD}
+            x2={CHART_WIDTH - CHART_PAD}
+            y1={CHART_PAD + (1 - y / 100) * (CHART_HEIGHT - CHART_PAD * 2)}
+            y2={CHART_PAD + (1 - y / 100) * (CHART_HEIGHT - CHART_PAD * 2)}
+            stroke="currentColor"
+            strokeOpacity={0.1}
+            strokeWidth={1}
+            className="text-neutral-500"
+          />
+        ))}
+        {scorePath && <path d={`M ${scorePath}`} fill="none" stroke="#2563eb" strokeWidth={2} />}
+        {perfPath && <path d={`M ${perfPath}`} fill="none" stroke="#d97706" strokeWidth={2} strokeDasharray="4 3" />}
+      </svg>
+      <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
+        <span>{firstDate.toLocaleDateString()}</span>
+        <div className="flex gap-4">
+          <span className="flex items-center gap-1">
+            <span className="h-0.5 w-3 bg-blue-600" /> SEO score
+          </span>
+          {hasPerf && (
+            <span className="flex items-center gap-1">
+              <span className="h-0.5 w-3 border-t-2 border-dashed border-amber-600" /> Performance
+            </span>
+          )}
+        </div>
+        <span>{lastDate.toLocaleDateString()}</span>
+      </div>
+    </div>
+  );
+}
+
+function LocalSeoCheck({ ok, label }: { ok: boolean; label: string }) {
+  return (
+    <li className="flex items-center gap-2">
+      <span
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-xs ${
+          ok ? "bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-300" : "bg-neutral-100 text-neutral-400 dark:bg-neutral-900"
+        }`}
+      >
+        {ok ? "✓" : "–"}
+      </span>
+      {label}
+    </li>
   );
 }
 

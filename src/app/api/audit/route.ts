@@ -59,8 +59,11 @@ export async function POST(req: NextRequest) {
       issues,
       pageSpeed,
       readability: parsedPage.readability,
+      localSeo: parsedPage.localSeo,
       internalLinkUrls: parsedPage.internalLinkUrls,
-      scoreHistory: [{ score, scannedAt: new Date() }],
+      scoreHistory: [
+        { score, performanceScore: pageSpeed.performanceScore, accessibilityScore: pageSpeed.accessibilityScore, scannedAt: new Date() },
+      ],
     });
 
     return NextResponse.json({ id: scan._id.toString() }, { status: 201 });

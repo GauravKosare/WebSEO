@@ -121,11 +121,27 @@ const ScanSchema = new Schema(
     keywordIdeas: [KeywordIdeaSchema],
     seoStrategy: SeoStrategySchema,
     readability: ReadabilitySchema,
+    localSeo: {
+      structuredDataTypes: [String],
+      hasLocalBusinessSchema: Boolean,
+      hasPhoneNumber: Boolean,
+      hasAddressPattern: Boolean,
+      hasEmbeddedMap: Boolean,
+      hasHoursText: Boolean,
+    },
     internalLinkUrls: [String],
     linkCheck: LinkCheckSchema,
     competitorComparison: CompetitorComparisonSchema,
     monitoringEnabled: { type: Boolean, default: false },
-    scoreHistory: [{ score: Number, scannedAt: Date, _id: false }],
+    scoreHistory: [
+      {
+        score: Number,
+        performanceScore: Number,
+        accessibilityScore: Number,
+        scannedAt: Date,
+        _id: false,
+      },
+    ],
   },
   { timestamps: true }
 );

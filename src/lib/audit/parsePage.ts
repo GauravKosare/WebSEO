@@ -1,5 +1,6 @@
 import * as cheerio from "cheerio";
 import { computeReadability, type ReadabilityResult } from "./readability";
+import { analyzeLocalSeo, type LocalSeoSignals } from "./localSeo";
 
 const MAX_LINKS_CAPTURED = 40;
 const MAX_READABILITY_TEXT = 20_000;
@@ -21,6 +22,7 @@ export type ParsedPage = {
   hasOpenGraph: boolean;
   hasStructuredData: boolean;
   readability: ReadabilityResult | null;
+  localSeo: LocalSeoSignals;
   textSample: string;
 };
 
@@ -89,6 +91,7 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
     .replace(/\s+/g, " ")
     .trim();
   const readability = computeReadability(paragraphText.slice(0, MAX_READABILITY_TEXT));
+  const localSeo = analyzeLocalSeo($, bodyText);
 
   return {
     title,
@@ -107,6 +110,7 @@ export function parsePage(html: string, pageUrl: string): ParsedPage {
     hasOpenGraph,
     hasStructuredData,
     readability,
+    localSeo,
     textSample: bodyText.slice(0, 4000),
   };
 }

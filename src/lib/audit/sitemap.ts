@@ -1,6 +1,7 @@
 import { fetch as undiciFetch } from "undici";
 import { UnsafeUrlError, parseAndValidateUrlShape, resolvePublicHost } from "./urlSafety";
 import { pinnedAgent } from "./crawler";
+import { validateRobotsTxt, validateSitemapXml, type ValidationIssue } from "./sitemapValidation";
 
 const MAX_REDIRECTS = 5;
 const FETCH_TIMEOUT_MS = 8_000;
@@ -105,6 +106,7 @@ function isSitemapIndex(xml: string): boolean {
 export type SitemapDiscoveryResult = {
   sitemapUrl: string | null;
   urls: string[];
+  validationIssues: ValidationIssue[];
 };
 
 /**
@@ -134,7 +136,10 @@ export async function discoverSitemapUrls(rootUrl: string): Promise<SitemapDisco
     throw new UnsafeUrlError("Could not find a sitemap.xml for that site (checked robots.txt and /sitemap.xml).");
   }
 
+  const robotsIssues = validateRobotsTxt(robots?.status ?? null, robots?.body ?? null, sitemapRes.finalUrl);
+
   let urls = extractLocs(sitemapRes.body);
+  const topLevelLocs = urls;
 
   if (isSitemapIndex(sitemapRes.body)) {
     // Sitemap index: `urls` right now are child sitemap URLs, not pages.
@@ -171,5 +176,21 @@ export async function discoverSitemapUrls(rootUrl: string): Promise<SitemapDisco
     throw new UnsafeUrlError("That sitemap didn't list any pages we could scan.");
   }
 
-  return { sitemapUrl: sitemapRes.finalUrl, urls: pageUrls };
+  // Validated against the top-level sitemap's own <loc> entries — for a
+  // sitemap index those are child sitemap URLs (also expected same-origin),
+  // not the final page list, but that's still the right thing to validate.
+  const sameOriginTopLevel = topLevelLocs.filter((u) => {
+    try {
+      return new URL(u).origin === origin;
+    } catch {
+      return false;
+    }
+  });
+  const sitemapIssues = validateSitemapXml(sitemapRes.body, topLevelLocs, sameOriginTopLevel, origin);
+
+  return {
+    sitemapUrl: sitemapRes.finalUrl,
+    urls: pageUrls,
+    validationIssues: [...robotsIssues, ...sitemapIssues],
+  };
 }

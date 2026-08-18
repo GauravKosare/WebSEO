@@ -13,6 +13,8 @@ type CrawledPage = {
   error?: string;
 };
 
+type ValidationIssue = { severity: "critical" | "warning" | "info"; title: string; detail: string };
+
 export type CrawlData = {
   _id: string;
   rootUrl: string;
@@ -21,6 +23,7 @@ export type CrawlData = {
   pages: CrawledPage[];
   overallScore: number | null;
   skippedForTime: number;
+  validationIssues?: ValidationIssue[];
   createdAt: string;
 };
 
@@ -29,6 +32,12 @@ function scoreColor(score: number) {
   if (score >= 50) return "text-amber-600";
   return "text-red-600";
 }
+
+const VALIDATION_STYLES: Record<ValidationIssue["severity"], string> = {
+  critical: "border-red-300 bg-red-50 text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300",
+  warning: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-300",
+  info: "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300",
+};
 
 export default function CrawlResultsClient({ crawl }: { crawl: CrawlData }) {
   const okPages = crawl.pages.filter((p) => p.status === "ok").sort((a, b) => (a.score ?? 0) - (b.score ?? 0));
@@ -65,6 +74,20 @@ export default function CrawlResultsClient({ crawl }: { crawl: CrawlData }) {
           </p>
         )}
       </div>
+
+      {crawl.validationIssues && crawl.validationIssues.length > 0 && (
+        <section className="mt-10">
+          <h2 className="text-xl font-semibold">Sitemap &amp; robots.txt validation</h2>
+          <div className="mt-4 space-y-2">
+            {crawl.validationIssues.map((v, i) => (
+              <div key={i} className={`rounded-lg border p-3 text-sm ${VALIDATION_STYLES[v.severity]}`}>
+                <p className="font-medium">{v.title}</p>
+                <p className="mt-0.5 opacity-90">{v.detail}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="mt-10">
         <h2 className="text-xl font-semibold">Pages, worst score first ({okPages.length})</h2>

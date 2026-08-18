@@ -76,7 +76,10 @@ export async function GET(req: NextRequest) {
       scan.score = score;
       scan.finalUrl = page.finalUrl;
       scan.pageSpeed = pageSpeed;
-      scan.scoreHistory = [...(scan.scoreHistory ?? []), { score, scannedAt: new Date() }].slice(-MAX_HISTORY_ENTRIES);
+      scan.scoreHistory = [
+        ...(scan.scoreHistory ?? []),
+        { score, performanceScore: pageSpeed.performanceScore, accessibilityScore: pageSpeed.accessibilityScore, scannedAt: new Date() },
+      ].slice(-MAX_HISTORY_ENTRIES);
       await scan.save();
 
       results.push({ url: scan.url, status: "ok", score });
