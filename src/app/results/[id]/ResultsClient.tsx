@@ -131,7 +131,11 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
   const [compareLoading, setCompareLoading] = useState(false);
   const [competitorUrl, setCompetitorUrl] = useState("");
   const [monitorLoading, setMonitorLoading] = useState(false);
-  const [errors, setErrors] = useState<{ ai?: string; keywords?: string; strategy?: string; links?: string; compare?: string }>({});
+  const [emailAddress, setEmailAddress] = useState("");
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  const [showEmailForm, setShowEmailForm] = useState(false);
+  const [errors, setErrors] = useState<{ ai?: string; keywords?: string; strategy?: string; links?: string; compare?: string; email?: string }>({});
 
   async function generateAi() {
     setAiLoading(true);
@@ -230,6 +234,27 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
     }
   }
 
+  async function sendReportEmail(e: React.FormEvent) {
+    e.preventDefault();
+    if (!emailAddress.trim()) return;
+    setEmailLoading(true);
+    setErrors((e) => ({ ...e, email: undefined }));
+    try {
+      const res = await fetch(`/api/report/${scan._id}/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: emailAddress.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to send the report.");
+      setEmailSent(true);
+    } catch (err) {
+      setErrors((e) => ({ ...e, email: err instanceof Error ? err.message : "Failed." }));
+    } finally {
+      setEmailLoading(false);
+    }
+  }
+
   async function toggleMonitoring() {
     setMonitorLoading(true);
     try {
@@ -265,6 +290,41 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
           >
             {scan.monitoringEnabled ? "✓ Daily monitoring on" : "Enable daily monitoring"}
           </button>
+          <a
+            href={`/api/report/${scan._id}/pdf`}
+            className="mt-3 ml-2 inline-block rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
+          >
+            Download PDF
+          </a>
+          {!showEmailForm && !emailSent && (
+            <button
+              onClick={() => setShowEmailForm(true)}
+              className="mt-3 ml-2 rounded-full border border-neutral-300 px-3 py-1 text-xs font-medium hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-900"
+            >
+              Email report
+            </button>
+          )}
+          {emailSent && <p className="mt-3 ml-2 inline-block text-xs text-green-600">✓ Report sent to {emailAddress}</p>}
+          {showEmailForm && !emailSent && (
+            <form onSubmit={sendReportEmail} className="mt-3 ml-2 inline-flex gap-1.5 align-middle">
+              <input
+                type="email"
+                value={emailAddress}
+                onChange={(e) => setEmailAddress(e.target.value)}
+                placeholder="you@example.com"
+                disabled={emailLoading}
+                className="rounded-full border border-neutral-300 bg-white px-3 py-1 text-xs outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 dark:border-neutral-700 dark:bg-neutral-900"
+              />
+              <button
+                type="submit"
+                disabled={emailLoading}
+                className="rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {emailLoading ? "Sending…" : "Send"}
+              </button>
+            </form>
+          )}
+          {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
         </div>
         <ScoreRing score={scan.score} />
       </div>

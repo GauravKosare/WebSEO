@@ -9,11 +9,13 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@react-pdf/renderer": "^4.6.1",
     "cheerio": "^1.2.0",
     "mongoose": "^9.9.2",
     "next": "16.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "resend": "^6.20.0",
     "undici": "^8.10.0",
     "zod": "^4.4.3"
   },
