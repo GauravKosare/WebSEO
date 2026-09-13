@@ -12,8 +12,9 @@ export type DomainAuthorityResult = {
  * up to 100 domains per request (we only ever send one).
  *
  * The service has since been folded into Keywords Everywhere and now lives
- * at openpagerank.keywordseverywhere.com — keys issued from that dashboard
- * 403 against the old openpagerank.com host, so this must point there.
+ * at openpagerank.keywordseverywhere.com with an entirely new API: a POST
+ * to /v1/domains/bulk with a Bearer token, not the legacy GET + API-OPR
+ * header scheme the original openpagerank.com API used.
  */
 export async function getDomainAuthority(pageUrl: string): Promise<DomainAuthorityResult> {
   let domain: string;
@@ -28,30 +29,32 @@ export async function getDomainAuthority(pageUrl: string): Promise<DomainAuthori
     return { domain, pageRankDecimal: null, rank: null, error: "OpenPageRank API key not configured." };
   }
 
-  const endpoint = new URL("https://openpagerank.keywordseverywhere.com/api/v1.0/getPageRank");
-  endpoint.searchParams.set("domains[0]", domain);
-
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 10_000);
 
   try {
-    const res = await fetch(endpoint.toString(), {
-      headers: { "API-OPR": apiKey },
+    const res = await fetch("https://openpagerank.keywordseverywhere.com/v1/domains/bulk", {
+      method: "POST",
       signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ domains: [domain], include_history: false }),
     });
     if (!res.ok) {
       return { domain, pageRankDecimal: null, rank: null, error: `OpenPageRank API returned ${res.status}` };
     }
     const data = await res.json();
-    const result = data?.response?.[0];
-    if (!result || result.status_code !== 200) {
-      return { domain, pageRankDecimal: null, rank: null, error: result?.error ?? "No ranking data for this domain." };
+    const result = data?.results?.[0];
+    if (!result || result.found !== true) {
+      return { domain, pageRankDecimal: null, rank: null, error: "No ranking data for this domain." };
     }
 
     return {
       domain,
-      pageRankDecimal: typeof result.page_rank_decimal === "number" ? result.page_rank_decimal : null,
-      rank: typeof result.rank === "number" ? result.rank : (result.rank ? Number(result.rank) : null),
+      pageRankDecimal: typeof result.open_page_rank === "number" ? result.open_page_rank : null,
+      rank: typeof result.rank === "number" ? result.rank : null,
     };
   } catch (err) {
     return {
