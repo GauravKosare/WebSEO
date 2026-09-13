@@ -8,6 +8,9 @@ import { fetchPageSafely } from "@/lib/audit/crawler";
 import { parsePage } from "@/lib/audit/parsePage";
 import { runAuditRules } from "@/lib/audit/rules";
 import { getPageSpeedResult } from "@/lib/audit/pagespeed";
+import { getDomainAuthority } from "@/lib/audit/domainAuthority";
+import { analyzeSecurityHeaders } from "@/lib/audit/securityHeaders";
+import { checkSafeBrowsing } from "@/lib/audit/safeBrowsing";
 import { UnsafeUrlError } from "@/lib/audit/urlSafety";
 
 export const runtime = "nodejs";
@@ -44,25 +47,49 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    // PageSpeed only needs the URL (Google follows redirects itself), so run
-    // it concurrently with our own fetch+parse instead of waiting on it.
-    const [page, pageSpeed] = await Promise.all([fetchPageSafely(normalizedUrl), getPageSpeedResult(normalizedUrl)]);
+    // None of these depend on each other's results, so run them all
+    // concurrently instead of waiting on each in turn.
+    const [page, pageSpeed, domainAuthority, safeBrowsing] = await Promise.all([
+      fetchPageSafely(normalizedUrl),
+      getPageSpeedResult(normalizedUrl),
+      getDomainAuthority(normalizedUrl),
+      checkSafeBrowsing(normalizedUrl),
+    ]);
     const parsedPage = parsePage(page.html, page.finalUrl);
     const { issues, score } = runAuditRules(parsedPage);
+    const securityHeaders = analyzeSecurityHeaders(page.headers, page.finalUrl);
+
+    // A malware/phishing flag is a dominant, safety-critical signal — it
+    // should crater the score and lead the issue list, not sit as a
+    // side-note next to "meta description is short".
+    if (safeBrowsing.isFlagged) {
+      issues.unshift({
+        id: "safe-browsing-flagged",
+        severity: "critical",
+        category: "Security",
+        title: "Flagged by Google Safe Browsing",
+        detail: `Google has flagged this site for: ${safeBrowsing.threatTypes.join(", ") || "unspecified threats"}. This will actively block visitors in Chrome/Firefox and tank rankings until resolved.`,
+        points: 40,
+      });
+    }
+    const finalScore = safeBrowsing.isFlagged ? Math.max(0, score - 40) : score;
 
     const scan = await Scan.create({
       visitorId,
       clientIp,
       url: normalizedUrl,
       finalUrl: page.finalUrl,
-      score,
+      score: finalScore,
       issues,
       pageSpeed,
+      domainAuthority,
+      securityHeaders,
+      safeBrowsing,
       readability: parsedPage.readability,
       localSeo: parsedPage.localSeo,
       internalLinkUrls: parsedPage.internalLinkUrls,
       scoreHistory: [
-        { score, performanceScore: pageSpeed.performanceScore, accessibilityScore: pageSpeed.accessibilityScore, scannedAt: new Date() },
+        { score: finalScore, performanceScore: pageSpeed.performanceScore, accessibilityScore: pageSpeed.accessibilityScore, scannedAt: new Date() },
       ],
     });
 

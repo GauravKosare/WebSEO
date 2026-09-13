@@ -50,6 +50,28 @@ export type ScanData = {
     seoScore: number | null;
     accessibilityScore: number | null;
     isMobileFriendly: boolean | null;
+    opportunities?: { id: string; title: string; description: string; displayValue?: string; savingsMs?: number }[];
+    error?: string;
+  };
+  performanceExplanation?: {
+    summary: string;
+    prioritizedFixes: { title: string; plainEnglish: string; impact: "high" | "medium" | "low" }[];
+  };
+  domainAuthority?: {
+    domain: string;
+    pageRankDecimal: number | null;
+    rank: number | null;
+    error?: string;
+  };
+  securityHeaders?: {
+    isHttps: boolean;
+    grade: "good" | "fair" | "poor";
+    checks: { header: string; present: boolean; note: string }[];
+  };
+  safeBrowsing?: {
+    isFlagged: boolean;
+    threatTypes: string[];
+    checked: boolean;
     error?: string;
   };
   aiContent?: AiContent;
@@ -127,6 +149,7 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
   const [aiLoading, setAiLoading] = useState(false);
   const [keywordsLoading, setKeywordsLoading] = useState(false);
   const [strategyLoading, setStrategyLoading] = useState(false);
+  const [perfLoading, setPerfLoading] = useState(false);
   const [linksLoading, setLinksLoading] = useState(false);
   const [compareLoading, setCompareLoading] = useState(false);
   const [competitorUrl, setCompetitorUrl] = useState("");
@@ -135,7 +158,7 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
   const [emailLoading, setEmailLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
   const [showEmailForm, setShowEmailForm] = useState(false);
-  const [errors, setErrors] = useState<{ ai?: string; keywords?: string; strategy?: string; links?: string; compare?: string; email?: string }>({});
+  const [errors, setErrors] = useState<{ ai?: string; keywords?: string; strategy?: string; links?: string; compare?: string; email?: string; perf?: string }>({});
 
   async function generateAi() {
     setAiLoading(true);
@@ -191,6 +214,25 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
       setErrors((e) => ({ ...e, strategy: err instanceof Error ? err.message : "Failed." }));
     } finally {
       setStrategyLoading(false);
+    }
+  }
+
+  async function explainPerformance() {
+    setPerfLoading(true);
+    setErrors((e) => ({ ...e, perf: undefined }));
+    try {
+      const res = await fetch("/api/performance-explain", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ scanId: scan._id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Failed to explain performance results.");
+      setScan((s) => ({ ...s, performanceExplanation: data.performanceExplanation }));
+    } catch (err) {
+      setErrors((e) => ({ ...e, perf: err instanceof Error ? err.message : "Failed." }));
+    } finally {
+      setPerfLoading(false);
     }
   }
 
@@ -325,16 +367,27 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
             </form>
           )}
           {errors.email && <p className="mt-1 text-xs text-red-600">{errors.email}</p>}
+          {scan.safeBrowsing?.checked && (
+            <p className={`mt-3 text-xs font-medium ${scan.safeBrowsing.isFlagged ? "text-red-600" : "text-green-600"}`}>
+              {scan.safeBrowsing.isFlagged
+                ? `⚠ Flagged by Google Safe Browsing: ${scan.safeBrowsing.threatTypes.join(", ")}`
+                : "✓ No safety issues found (Google Safe Browsing)"}
+            </p>
+          )}
         </div>
         <ScoreRing score={scan.score} />
       </div>
 
       {scan.pageSpeed && (
-        <div className="mt-6 grid grid-cols-3 gap-4">
+        <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <Metric label="Performance" value={scan.pageSpeed.performanceScore} />
           <Metric label="SEO (Lighthouse)" value={scan.pageSpeed.seoScore} />
           <Metric label="Accessibility" value={scan.pageSpeed.accessibilityScore} />
+          <Metric label="Domain Authority (0-10)" value={scan.domainAuthority?.pageRankDecimal ?? null} />
         </div>
+      )}
+      {scan.domainAuthority?.error && (
+        <p className="mt-2 text-xs text-neutral-500">Domain authority unavailable: {scan.domainAuthority.error}</p>
       )}
       {scan.pageSpeed?.error && (
         <p className="mt-2 text-xs text-neutral-500">Speed data unavailable: {scan.pageSpeed.error}</p>
@@ -360,6 +413,31 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
         </div>
       )}
 
+      {scan.securityHeaders && (
+        <div className="mt-6 rounded-lg border border-neutral-200 p-4 dark:border-neutral-800">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-medium">Security headers</p>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${
+                scan.securityHeaders.grade === "good"
+                  ? "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300"
+                  : scan.securityHeaders.grade === "fair"
+                    ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                    : "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300"
+              }`}
+            >
+              {scan.securityHeaders.grade}
+            </span>
+          </div>
+          <ul className="mt-3 grid gap-2 text-sm sm:grid-cols-2">
+            <LocalSeoCheck ok={scan.securityHeaders.isHttps} label="Served over HTTPS" />
+            {scan.securityHeaders.checks.map((c) => (
+              <LocalSeoCheck key={c.header} ok={c.present} label={c.header} />
+            ))}
+          </ul>
+        </div>
+      )}
+
       <section className="mt-10">
         <h2 className="text-xl font-semibold">Issues found ({scan.issues.length})</h2>
         <div className="mt-4 space-y-6">
@@ -379,6 +457,45 @@ export default function ResultsClient({ initialScan }: { initialScan: ScanData }
           {scan.issues.length === 0 && <p className="text-neutral-500">No issues found. Nicely done.</p>}
         </div>
       </section>
+
+      {scan.pageSpeed && (scan.pageSpeed.opportunities?.length ?? 0) > 0 && (
+        <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">AI performance analysis</h2>
+              <p className="text-xs text-neutral-500">PageSpeed's technical findings, explained in plain English and prioritized.</p>
+            </div>
+            {!scan.performanceExplanation && (
+              <button
+                onClick={explainPerformance}
+                disabled={perfLoading}
+                className="shrink-0 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {perfLoading ? "Analyzing…" : "Explain performance issues"}
+              </button>
+            )}
+          </div>
+          {errors.perf && <p className="mt-2 text-sm text-red-600">{errors.perf}</p>}
+          {scan.performanceExplanation && (
+            <div className="mt-4 space-y-3 text-sm">
+              <p className="text-neutral-700 dark:text-neutral-300">{scan.performanceExplanation.summary}</p>
+              <div className="space-y-2">
+                {scan.performanceExplanation.prioritizedFixes.map((fix, i) => (
+                  <div key={i} className="rounded-lg border border-neutral-200 p-3 dark:border-neutral-800">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="font-medium">{fix.title}</p>
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium capitalize ${DIFFICULTY_STYLES[fix.impact]}`}>
+                        {fix.impact} impact
+                      </span>
+                    </div>
+                    <p className="mt-0.5 text-neutral-600 dark:text-neutral-400">{fix.plainEnglish}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="mt-10 rounded-2xl border border-neutral-200 p-6 dark:border-neutral-800">
         <div className="flex items-center justify-between">

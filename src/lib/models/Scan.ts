@@ -102,6 +102,16 @@ const ReadabilitySchema = new Schema(
   { _id: false }
 );
 
+// Real Schema so "not generated yet" (undefined) stays distinguishable from
+// "generated, found nothing to flag" (prioritizedFixes: []).
+const PerformanceExplanationSchema = new Schema(
+  {
+    summary: String,
+    prioritizedFixes: [{ title: String, plainEnglish: String, impact: String, _id: false }],
+  },
+  { _id: false }
+);
+
 const ScanSchema = new Schema(
   {
     visitorId: { type: String, required: true, index: true },
@@ -115,6 +125,25 @@ const ScanSchema = new Schema(
       seoScore: Number,
       accessibilityScore: Number,
       isMobileFriendly: Boolean,
+      opportunities: [{ id: String, title: String, description: String, displayValue: String, savingsMs: Number, _id: false }],
+      error: String,
+    },
+    performanceExplanation: PerformanceExplanationSchema,
+    domainAuthority: {
+      domain: String,
+      pageRankDecimal: Number,
+      rank: Number,
+      error: String,
+    },
+    securityHeaders: {
+      isHttps: Boolean,
+      grade: { type: String, enum: ["good", "fair", "poor"] },
+      checks: [{ header: String, present: Boolean, note: String, _id: false }],
+    },
+    safeBrowsing: {
+      isFlagged: Boolean,
+      threatTypes: [String],
+      checked: Boolean,
       error: String,
     },
     aiContent: AiContentSchema,

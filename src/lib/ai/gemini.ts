@@ -1,5 +1,6 @@
 import type { Issue } from "../audit/rules";
 import type { ParsedPage } from "../audit/parsePage";
+import type { PerformanceOpportunity } from "../audit/pagespeed";
 
 const GEMINI_MODEL = "gemini-3.6-flash";
 const GEMINI_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
@@ -327,4 +328,71 @@ Produce, concisely:
   };
 
   return (await callGemini(prompt, schema)) as CompetitorComparison;
+}
+
+export type PerformanceFix = {
+  title: string;
+  plainEnglish: string;
+  impact: "high" | "medium" | "low";
+};
+
+export type PerformanceExplanation = {
+  summary: string;
+  prioritizedFixes: PerformanceFix[];
+};
+
+/**
+ * PageSpeed Insights' raw Lighthouse audits are accurate but written for
+ * engineers ("Eliminate render-blocking resources", "Reduce unused
+ * JavaScript"). Most people running this tool aren't developers, so this
+ * turns the same data into a prioritized, plain-English action list instead
+ * of requiring the user to already know what "TBT" or "LCP" mean.
+ */
+export async function explainPerformanceOpportunities(
+  opportunities: PerformanceOpportunity[],
+  pageUrl: string,
+  performanceScore: number | null
+): Promise<PerformanceExplanation> {
+  if (opportunities.length === 0) {
+    return { summary: "No significant performance issues were flagged by PageSpeed Insights.", prioritizedFixes: [] };
+  }
+
+  const prompt = `${SEO_EXPERT_PERSONA}
+
+You're explaining Google PageSpeed Insights results to someone who is not a developer and doesn't know technical performance jargon (LCP, TBT, render-blocking, etc.).
+
+${UNTRUSTED_DATA_FRAMING}
+
+<scraped-page>
+Page URL: ${pageUrl}
+Overall PageSpeed performance score: ${performanceScore ?? "unknown"}/100
+Raw Lighthouse findings (technical, in no particular priority order):
+${opportunities.map((o, i) => `${i + 1}. ${o.title}${o.displayValue ? ` (${o.displayValue})` : ""}${o.savingsMs ? ` — up to ${Math.round(o.savingsMs)}ms potential savings` : ""}: ${o.description}`).join("\n")}
+</scraped-page>
+
+Produce:
+1. A 1-2 sentence plain-English summary of the overall performance situation (avoid jargon).
+2. For each finding, a rewritten one-sentence plain-English explanation of what it means and why it matters to a visitor (not "eliminate render-blocking resources" but e.g. "some files are delaying your page from showing up — removing that delay would make it feel faster to visitors"), plus an impact rating (high/medium/low) based on the savings and how central the issue is. Keep the same count and order relevance as the input list, but you may merge near-duplicate findings.`;
+
+  const schema = {
+    type: "object",
+    properties: {
+      summary: { type: "string" },
+      prioritizedFixes: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            plainEnglish: { type: "string" },
+            impact: { type: "string", enum: ["high", "medium", "low"] },
+          },
+          required: ["title", "plainEnglish", "impact"],
+        },
+      },
+    },
+    required: ["summary", "prioritizedFixes"],
+  };
+
+  return (await callGemini(prompt, schema)) as PerformanceExplanation;
 }
