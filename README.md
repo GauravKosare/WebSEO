@@ -26,7 +26,7 @@ no jargon.
 ### Core audit (every scan, instant)
 - Titles, meta descriptions, headings, canonical tags, robots directives, viewport/mobile setup, Open Graph, structured data, internal linking
 - Real performance/SEO/accessibility scores via Google PageSpeed Insights (Lighthouse)
-- **Domain Authority** (0–10, via [OpenPageRank](https://www.domcop.com/openpagerank/)) — a free, Common-Crawl-based alternative to paid DA metrics
+- **Domain Authority** (0–10, via [OpenPageRank](https://openpagerank.keywordseverywhere.com/)) — a free, Common-Crawl-based alternative to paid DA metrics
 - **Readability scoring** (Flesch Reading Ease), computed from actual page prose, not navigation chrome
 - **Security headers audit** (HSTS, CSP, X-Frame-Options, etc.) — zero extra requests, analyzed from headers already fetched
 - **Google Safe Browsing check** — flags malware/phishing sites; a flag dominates the score instead of hiding as a footnote
@@ -145,7 +145,7 @@ Open http://localhost:3000.
 | `MONGODB_URI` | Yes | MongoDB Atlas connection string |
 | `GEMINI_API_KEY` | Yes, for AI features | Free key from [Google AI Studio](https://aistudio.google.com/apikey) |
 | `PAGESPEED_API_KEY` | Optional | Google Cloud API key with PageSpeed Insights API enabled; also reused for Safe Browsing |
-| `OPENPAGERANK_API_KEY` | Optional | Free key from [domcop.com/openpagerank](https://www.domcop.com/openpagerank/auth/signup) |
+| `OPENPAGERANK_API_KEY` | Optional | Free key from [openpagerank.keywordseverywhere.com](https://openpagerank.keywordseverywhere.com/) |
 | `CRON_SECRET` | Yes, for monitoring | Any long random string; Vercel auto-sends it as a Bearer token to cron invocations |
 | `BREVO_API_KEY` / `BREVO_FROM_EMAIL` | Optional | Enables "Email report"; free tier at [Brevo](https://app.brevo.com/settings/keys/api) |
 

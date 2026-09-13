@@ -6,10 +6,14 @@ export type DomainAuthorityResult = {
 };
 
 /**
- * OpenPageRank (domcop.com) computes a free 0-10 authority-style score from
- * Common Crawl's open web graph — the one legitimate free alternative to
+ * OpenPageRank computes a free 0-10 authority-style score from Common
+ * Crawl's open web graph — the one legitimate free alternative to
  * Moz/Ahrefs' paid Domain Authority metrics. Free tier: 30,000 domains/month,
  * up to 100 domains per request (we only ever send one).
+ *
+ * The service has since been folded into Keywords Everywhere and now lives
+ * at openpagerank.keywordseverywhere.com — keys issued from that dashboard
+ * 403 against the old openpagerank.com host, so this must point there.
  */
 export async function getDomainAuthority(pageUrl: string): Promise<DomainAuthorityResult> {
   let domain: string;
@@ -24,7 +28,7 @@ export async function getDomainAuthority(pageUrl: string): Promise<DomainAuthori
     return { domain, pageRankDecimal: null, rank: null, error: "OpenPageRank API key not configured." };
   }
 
-  const endpoint = new URL("https://openpagerank.com/api/v1.0/getPageRank");
+  const endpoint = new URL("https://openpagerank.keywordseverywhere.com/api/v1.0/getPageRank");
   endpoint.searchParams.set("domains[0]", domain);
 
   const controller = new AbortController();
