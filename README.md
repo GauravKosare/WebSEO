@@ -207,39 +207,32 @@ src/
     pdf/            @react-pdf/renderer report document
 ```
 
-## How it was made
+## Engineering notes
 
-WebSEO was built end-to-end in an AI-agent-driven session using
-[Claude Code](https://claude.com/claude-code), in a running conversation rather than
-a single generated dump — 17 commits, each with a real reason behind it:
+A few decisions and fixes worth calling out from the build:
 
-1. **The MVP first**: an SSRF-safe crawler, a rule-based audit engine, Gemini-generated
-   title/meta suggestions, MongoDB-backed history, and daily monitoring via Vercel Cron
-   — chosen and reasoned about before a line was written (Next.js for a serverless-
-   friendly single deploy, MongoDB for audit results' variable shape, Gemini for its
-   genuine free tier where Claude/OpenAI have none).
-2. **A code-review pass, immediately** — not an afterthought. It caught a
-   DNS-rebinding gap in the very first SSRF guard (the fetch step re-resolved DNS
-   independently of the validation step, the classic TOCTOU bypass) and a Server
-   Component crash from setting cookies outside a Route Handler. Both fixed before
-   the app ever saw production traffic.
-3. **A dedicated security hardening pass**: pinning every fetch to its validated IP
-   via a custom `undici` connector, constant-time secret comparison, IP+cookie rate
-   limiting, and — weeks later — closing an IPv6 6to4/NAT64 transition-prefix gap the
-   first guard didn't account for.
-4. **Iterative feature growth driven by real testing, not just requests**: readability
-   scoring was rewritten mid-build after testing revealed it was scoring navigation
-   menus as "sentences" and producing nonsense grades; the keyword-ideas button had a
-   Mongoose quirk (array fields default to `[]`, not `undefined`) that silently hid it
-   until a live test caught it; PageSpeed's rich `audits` data was sitting unused for
-   several commits before becoming the AI performance explainer.
-5. **Chasing a moving target**: OpenPageRank's API moved hosts *and* changed its
-   entire request/response contract mid-project (`GET` + a custom header → `POST` +
-   Bearer auth) after it was folded into Keywords Everywhere. Fixed by reading their
-   actual docs page rather than trusting a search summary that cited a
-   suspicious-looking source.
-6. **Every screenshot in this README is real** — captured with a headless-browser
-   script against the live deployment, not hand-picked mockups.
+- **Chose Next.js + MongoDB + Gemini deliberately**: Next.js for a serverless-friendly
+  single deploy (frontend + API routes together), MongoDB for the variable shape of
+  audit results (some pages trigger 3 issues, others 15 — a rigid schema fights that),
+  Gemini for having an actual free tier for the AI features.
+- **SSRF was treated as the core threat model from the start**, not bolted on: the app
+  fetches arbitrary user-submitted URLs server-side, so a code-review pass caught a
+  DNS-rebinding gap early (the fetch step re-resolved DNS independently of the
+  validation step — a classic TOCTOU bypass) and a dedicated hardening pass followed up
+  with IP-pinned connections, constant-time secret comparison, and closing an IPv6
+  6to4/NAT64 transition-prefix gap the first guard missed.
+- **Bugs found through actually running it, not just reading the code**: readability
+  scoring was rewritten after live testing showed it scoring navigation menus as
+  "sentences"; a Mongoose quirk (array fields default to `[]`, not `undefined`) was
+  silently hiding the keyword-ideas button until a live test caught it; PageSpeed's
+  detailed `audits` data sat unused for a while before becoming the AI performance
+  explainer.
+- **Kept up with a moving target**: OpenPageRank changed hosts *and* its entire
+  request/response contract (`GET` + a custom header → `POST` + Bearer auth) mid-build
+  after being folded into Keywords Everywhere — fixed by reading their actual docs
+  page rather than trusting a search summary that cited an unreliable source.
+- **Every screenshot in this README is real** — captured with a headless-browser
+  script against the live deployment, not hand-picked mockups.
 
 ## License
 
