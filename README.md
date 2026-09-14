@@ -51,11 +51,14 @@ no jargon.
 
 ## Screenshots
 
+*All captured live against [github.com](https://github.com) and [nextjs.org](https://nextjs.org) — real scores, real AI output, not mockups.*
+
 | | |
 |---|---|
-| ![Audit results](public/screenshots/audit-results.png) Scored audit with PageSpeed, readability, and prioritized issues | ![Issue detail](public/screenshots/audit-issues.png) Issues grouped by category, plus AI-written fixes |
-| ![AI features](public/screenshots/ai-features.png) Keyword ideas, link health, local SEO, competitor comparison | ![AI content strategy](public/screenshots/ai-content-strategy.png) Full AI rewrite brief with heading outline and schema suggestions |
-| ![Site crawl](public/screenshots/site-crawl-summary.png) Site-wide crawl summary with sitemap validation | ![Site crawl pages](public/screenshots/site-crawl-pages.png) Every crawled page, worst score first |
+| ![Audit results](public/screenshots/audit-results.png) Scored audit for github.com: 90/100, Domain Authority 9.54, PageSpeed, readability, and a security-headers checklist | ![Issue detail](public/screenshots/audit-issues.png) Issues grouped by category, with the AI performance analysis, AI-written fixes, and keyword ideas panels below |
+| ![AI-written fixes](public/screenshots/ai-written-fixes.png) AI-written fixes: rewritten title/meta/H1, E-E-A-T trust signals, and specific alt text for real GitHub images | ![AI features](public/screenshots/ai-features.png) Keyword ideas, link health, local SEO signals, and the AI content strategy trigger |
+| ![AI content strategy](public/screenshots/ai-content-strategy.png) Full AI rewrite brief for github.com — primary keyword, content gap analysis, heading outline | ![Site crawl](public/screenshots/site-crawl-summary.png) Site-wide crawl of nextjs.org: 93/100 average across 12 pages from a 200-URL sitemap |
+| ![Site crawl pages](public/screenshots/site-crawl-pages.png) Every crawled page, worst score first, with its top issues | |
 
 ## Architecture
 
@@ -91,6 +94,33 @@ sitemap discovery, and monitoring rescans — goes through the same SSRF-hardene
 | Hosting | Vercel | Serverless functions + Cron for daily monitoring |
 
 ## How a scan works
+
+```mermaid
+sequenceDiagram
+    participant U as Visitor
+    participant A as Next.js API
+    participant T as Target site
+    participant P as PageSpeed / OpenPageRank / Safe Browsing
+    participant D as MongoDB
+    participant G as Gemini (on demand)
+
+    U->>A: POST /api/audit { url }
+    A->>A: Resolve DNS, block private/reserved IPs
+    A->>T: Fetch (pinned to the validated IP)
+    par independent, run concurrently
+        A->>P: PageSpeed Insights
+        A->>P: OpenPageRank
+        A->>P: Safe Browsing
+    end
+    A->>A: Parse HTML, run ~15 rule checks, analyze headers already fetched
+    A->>D: Save scan (keyed to anonymous cookie)
+    A-->>U: { id } → redirect to /results/[id]
+    U->>A: Generate suggestions / ideas / strategy (on demand)
+    A->>G: Structured-schema prompt
+    G-->>A: JSON (title, meta, keywords, ...)
+    A->>D: Save onto the scan
+    A-->>U: Rendered result
+```
 
 1. `POST /api/audit` validates and normalizes the URL, then fetches it **server-side**
    through an SSRF guard (see [Security](#security)).
@@ -176,6 +206,40 @@ src/
     models/         Mongoose schemas (Scan, SiteCrawl)
     pdf/            @react-pdf/renderer report document
 ```
+
+## How it was made
+
+WebSEO was built end-to-end in an AI-agent-driven session using
+[Claude Code](https://claude.com/claude-code), in a running conversation rather than
+a single generated dump — 17 commits, each with a real reason behind it:
+
+1. **The MVP first**: an SSRF-safe crawler, a rule-based audit engine, Gemini-generated
+   title/meta suggestions, MongoDB-backed history, and daily monitoring via Vercel Cron
+   — chosen and reasoned about before a line was written (Next.js for a serverless-
+   friendly single deploy, MongoDB for audit results' variable shape, Gemini for its
+   genuine free tier where Claude/OpenAI have none).
+2. **A code-review pass, immediately** — not an afterthought. It caught a
+   DNS-rebinding gap in the very first SSRF guard (the fetch step re-resolved DNS
+   independently of the validation step, the classic TOCTOU bypass) and a Server
+   Component crash from setting cookies outside a Route Handler. Both fixed before
+   the app ever saw production traffic.
+3. **A dedicated security hardening pass**: pinning every fetch to its validated IP
+   via a custom `undici` connector, constant-time secret comparison, IP+cookie rate
+   limiting, and — weeks later — closing an IPv6 6to4/NAT64 transition-prefix gap the
+   first guard didn't account for.
+4. **Iterative feature growth driven by real testing, not just requests**: readability
+   scoring was rewritten mid-build after testing revealed it was scoring navigation
+   menus as "sentences" and producing nonsense grades; the keyword-ideas button had a
+   Mongoose quirk (array fields default to `[]`, not `undefined`) that silently hid it
+   until a live test caught it; PageSpeed's rich `audits` data was sitting unused for
+   several commits before becoming the AI performance explainer.
+5. **Chasing a moving target**: OpenPageRank's API moved hosts *and* changed its
+   entire request/response contract mid-project (`GET` + a custom header → `POST` +
+   Bearer auth) after it was folded into Keywords Everywhere. Fixed by reading their
+   actual docs page rather than trusting a search summary that cited a
+   suspicious-looking source.
+6. **Every screenshot in this README is real** — captured with a headless-browser
+   script against the live deployment, not hand-picked mockups.
 
 ## License
 
