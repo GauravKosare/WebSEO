@@ -209,9 +209,7 @@ src/
 
 ## How it was made
 
-WebSEO was built end-to-end in an AI-agent-driven session using
-[Claude Code](https://claude.com/claude-code), in a running conversation rather than
-a single generated dump — 17 commits, each with a real reason behind it:
+
 
 1. **The MVP first**: an SSRF-safe crawler, a rule-based audit engine, Gemini-generated
    title/meta suggestions, MongoDB-backed history, and daily monitoring via Vercel Cron
